@@ -12,6 +12,7 @@ from pytrends import exceptions
 
 from urllib.parse import quote
 
+import time
 
 BASE_TRENDS_URL = 'https://trends.google.com/trends'
 
@@ -121,44 +122,52 @@ class TrendReq(object):
         """
         s = requests.session()
         # Retries mechanism. Activated when one of statements >0 (best used for proxy)
-        if self.retries > 0 or self.backoff_factor > 0:
-            retry = Retry(total=self.retries, read=self.retries,
-                          connect=self.retries,
-                          backoff_factor=self.backoff_factor,
-                          status_forcelist=TrendReq.ERROR_CODES,
-                          method_whitelist=frozenset(['GET', 'POST']))
-            s.mount('https://', HTTPAdapter(max_retries=retry))
 
-        s.headers.update(self.headers)
-        if len(self.proxies) > 0:
-            self.cookies = self.GetGoogleCookie()
-            s.proxies.update({'https': self.proxies[self.proxy_index]})
-        if method == TrendReq.POST_METHOD:
-            response = s.post(url, timeout=self.timeout,
-                              cookies=self.cookies, **kwargs,
-                              **self.requests_args)  # DO NOT USE retries or backoff_factor here
-        else:
-            response = s.get(url, timeout=self.timeout, cookies=self.cookies,
-                             **kwargs, **self.requests_args)  # DO NOT USE retries or backoff_factor here
-        # check if the response contains json and throw an exception otherwise
-        # Google mostly sends 'application/json' in the Content-Type header,
-        # but occasionally it sends 'application/javascript
-        # and sometimes even 'text/javascript
-        if response.status_code == 200 and 'application/json' in \
-                response.headers['Content-Type'] or \
-                'application/javascript' in response.headers['Content-Type'] or \
-                'text/javascript' in response.headers['Content-Type']:
-            # trim initial characters
-            # some responses start with garbage characters, like ")]}',"
-            # these have to be cleaned before being passed to the json parser
-            content = response.text[trim_chars:]
-            # parse json
-            self.GetNewProxy()
-            return json.loads(content)
-        else:
-            if response.status_code == status_codes.codes.too_many_requests:
-                raise exceptions.TooManyRequestsError.from_response(response)
-            raise exceptions.ResponseError.from_response(response)
+        while 1==1:
+            s = requests.session()
+            # Retries mechanism. Activated when one of statements >0 (best used for proxy)
+            if self.retries > 0 or self.backoff_factor > 0:
+                retry = Retry(total=self.retries, read=self.retries,
+                            connect=self.retries,
+                            backoff_factor=self.backoff_factor,
+                            status_forcelist=TrendReq.ERROR_CODES,
+                            method_whitelist=frozenset(['GET', 'POST']))
+                s.mount('https://', HTTPAdapter(max_retries=retry))
+
+            s.headers.update(self.headers)
+            if len(self.proxies) > 0:
+                self.cookies = self.GetGoogleCookie()
+                s.proxies.update({'https': self.proxies[self.proxy_index]})
+            if method == TrendReq.POST_METHOD:
+                response = s.post(url, timeout=self.timeout,
+                                cookies=self.cookies, **kwargs,
+                                **self.requests_args)  # DO NOT USE retries or backoff_factor here
+            else:
+                response = s.get(url, timeout=self.timeout, cookies=self.cookies,
+                                **kwargs, **self.requests_args)  # DO NOT USE retries or backoff_factor here
+            # check if the response contains json and throw an exception otherwise
+            # Google mostly sends 'application/json' in the Content-Type header,
+            # but occasionally it sends 'application/javascript
+            # and sometimes even 'text/javascript
+            if response.status_code == 200 and 'application/json' in \
+                    response.headers['Content-Type'] or \
+                    'application/javascript' in response.headers['Content-Type'] or \
+                    'text/javascript' in response.headers['Content-Type']:
+                # trim initial characters
+                # some responses start with garbage characters, like ")]}',"
+                # these have to be cleaned before being passed to the json parser
+                content = response.text[trim_chars:]
+                # parse json
+                self.GetNewProxy()
+                return json.loads(content)
+            else:
+                if response.status_code == status_codes.codes.too_many_requests:
+                    print("ops! 429")
+                    time.sleep(10)
+                    continue
+                else:
+                    raise exceptions.ResponseError.from_response(response)
+
 
     def build_payload(self, kw_list, cat=0, timeframe='today 5-y', geo='',
                       gprop=''):
